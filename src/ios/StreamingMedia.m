@@ -19,11 +19,14 @@
 	UIColor *backgroundColor;
 	UIImageView *imageView;
     BOOL *initFullscreen;
+	NSString* orientation;
 }
 
 NSString * const TYPE_VIDEO = @"VIDEO";
 NSString * const TYPE_AUDIO = @"AUDIO";
 NSString * const DEFAULT_IMAGE_SCALE = @"center";
+
+UIDeviceOrientation originalOrientation;
 
 -(void)parseOptions:(NSDictionary *)options type:(NSString *) type {
 	// Common options
@@ -44,6 +47,9 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
         initFullscreen = true;
     }
 
+	if (![options isKindOfClass:[NSNull class]] && [options objectForKey:@"orientation"]) {
+		orientation = [options objectForKey:@"orientation"];
+	}
 	if ([type isEqualToString:TYPE_AUDIO]) {
 		// bgImage
 		// bgImageScale
@@ -195,6 +201,12 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 
 	moviePlayer =  [[MPMoviePlayerController alloc] initWithContentURL:url];
 
+	
+	// Listen for start
+	[[NSNotificationCenter defaultCenter] addObserver:self
+																					 selector:@selector(changeOrientation:)
+																							 name:MPMoviePlayerWillEnterFullscreenNotification
+																						 object:nil];
 	// Listen for playback finishing
 	[[NSNotificationCenter defaultCenter] addObserver:self
 											 selector:@selector(moviePlayBackDidFinish:)
@@ -256,6 +268,42 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 	}
 }
 
+
+-(void)changeOrientation:(NSNotification*)aNotification{
+	if (orientation!=nil){
+		UIDeviceOrientation videoOrientation = UIDeviceOrientationUnknown,
+		currentOrientation = [[UIDevice currentDevice] orientation];
+		// Conditionals separated in order to keep a
+		// counter-clockwise rotation
+		if([orientation isEqualToString:@"landscape"]){
+			if (currentOrientation==UIDeviceOrientationPortrait){
+				videoOrientation = UIDeviceOrientationLandscapeRight;
+			} else if (currentOrientation==UIDeviceOrientationPortraitUpsideDown){
+				videoOrientation = UIDeviceOrientationLandscapeLeft;
+			}
+		} else if([orientation isEqualToString:@"portrait"]){
+			if (currentOrientation==UIDeviceOrientationLandscapeLeft){
+				videoOrientation = UIDeviceOrientationPortrait;
+			} else if (currentOrientation==UIDeviceOrientationLandscapeRight){
+				videoOrientation = UIDeviceOrientationPortraitUpsideDown;
+			}
+		}
+		if (videoOrientation!=UIDeviceOrientationUnknown){
+			[[UIDevice currentDevice] setValue:@(videoOrientation) forKey:@"orientation"];
+			originalOrientation = currentOrientation;
+		} else {
+			originalOrientation = UIDeviceOrientationUnknown;
+		}
+	}
+}
+
+
+-(void) resetOrientation {
+	if (originalOrientation!=UIDeviceOrientationUnknown){
+		[[UIDevice currentDevice] setValue:@(originalOrientation) forKey:@"orientation"];
+	}
+}
+
 -(void)doneButtonClick:(NSNotification*)notification{
 	[self cleanup];
 
@@ -269,6 +317,13 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
     initFullscreen = false;
 	backgroundColor = nil;
 
+	[self resetOrientation];
+	
+	// Remove start listener
+	[[NSNotificationCenter defaultCenter]
+	 						removeObserver:self
+	 									name:MPMoviePlayerWillEnterFullscreenNotification
+	 								object:nil];
 	// Remove Done Button listener
 	[[NSNotificationCenter defaultCenter]
 							removeObserver:self
